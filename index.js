@@ -148,7 +148,7 @@ app.get("/leads/:id/comments", async (req, res) => {
     res.status(200).json(comments);
   } catch (error) {
     console.error("GET /leads/:id/comments error:", error);
-    res.status(500).json({ error: "Failed to fetch comments" });
+    res.status(500).json({ error: "Failed to fetch comments." });
   }
 });
 
