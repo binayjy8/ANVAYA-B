@@ -46,7 +46,7 @@ async function createSampleData() {
       priority: "High"
     });
 
-    console.log("Lad created:", lead);
+    console.log("La created:", lead);
     return lead;
   } catch (error) {
     console.error("Er  led:", error);
