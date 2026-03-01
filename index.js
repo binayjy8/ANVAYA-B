@@ -49,7 +49,7 @@ async function createSampleData() {
     console.log("Lead created:", lead);
     return lead;
   } catch (error) {
-    console.error("Erro crei led:", error);
+    console.error("Erro cri led:", error);
     throw error;
   }
 }
