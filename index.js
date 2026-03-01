@@ -205,6 +205,15 @@ app.put("/leads/:id", async (req, res) => {
   }
 });
 
+app.patch("/leads/:id", async (req, res) => {
+  try {
+    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.status(200).json(lead);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.delete("/leads/:id", async (req, res) => {
   try {
     await Lead.findByIdAndDelete(req.params.id);
