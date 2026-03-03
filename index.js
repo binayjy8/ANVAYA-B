@@ -50,7 +50,7 @@ async function createSampleData() {
     console.log("", lead);
     return lead;
   } catch (error) {
-    console.error("Er  ", error);
+    console.error("r  ", error);
     throw error;
   }
 }
