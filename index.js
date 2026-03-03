@@ -35,26 +35,6 @@ app.get("/agents", async (req, res) => {
   }
 });
 
-async function createSampleData() {
-  try {
-    const lead = await Lead.create({
-      name: "Acme Corp",
-      source: "Referral",
-      salesAgent: "699670d3a4348c878c2c468a", 
-      status: "New",
-      tags: ["High Value", "Follow-up"],
-      timeToClose: 30,
-      priority: "High"
-    });
-
-    console.log("", lead);
-    return lead;
-  } catch (error) {
-    console.error("r  ", error);
-    throw error;
-  }
-}
-
 app.get("/leads", async (req, res) => {
   try {
     const { salesAgent, status, tags, source, page = 1, limit = 10 } = req.query;
