@@ -143,6 +143,21 @@ app.get("/tags", async (req, res) => {
   }
 });
 
+app.get("/report/last-week", async (req, res) => {
+  try {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const leads = await Lead.find({ createdAt: { $gte: oneWeekAgo } })
+      .populate("salesAgent", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+    res.status(200).json(leads);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/tags", async (req, res) => {
   try {
     const { name } = req.body;
