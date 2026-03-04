@@ -7,6 +7,7 @@ const { initializeDatabase } = require("./config/db");
 const SalesAgent = require("./models/SalesAgent");
 const Lead = require("./models/Lead");
 const Comment = require("./models/Comment");
+const Tag = require("./models/Tag");
 
 const app = express();
 
