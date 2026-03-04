@@ -134,6 +134,28 @@ app.get("/leads/:id/comments", async (req, res) => {
   }
 });
 
+app.get("/tags", async (req, res) => {
+  try {
+    const tags = await Tag.find().sort({ name: 1 }).lean();
+    res.status(200).json(tags);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/tags", async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    const tag = await Tag.create({ name: name.trim() });
+    res.status(201).json(tag);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/leads", async (req, res) => {
   try {
     const lead = await Lead.create(req.body);
