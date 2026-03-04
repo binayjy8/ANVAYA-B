@@ -146,14 +146,19 @@ app.get("/tags", async (req, res) => {
 app.post("/tags", async (req, res) => {
   try {
     const { name } = req.body;
-    if (!name) {
+    const trimmedName = name?.trim();
+    if (!trimmedName) {
       return res.status(400).json({ error: "Name is required" });
     }
-    const tag = await Tag.create({ name: name.trim() });
+    const tag = await Tag.create({ name: trimmedName });
     res.status(201).json(tag);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+  const existingTag = await Tag.findOne({ name: trimmedName });
+if (existingTag) {
+  return res.status(409).json({ error: "Tag already exists" });
+}
 });
 
 app.post("/leads", async (req, res) => {
