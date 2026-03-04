@@ -158,6 +158,30 @@ app.get("/report/last-week", async (req, res) => {
   }
 });
 
+app.get("/report/pipeline", async (req, res) => {
+  try {
+
+    const pipeline = await Lead.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          totalLeads: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { totalLeads: -1 }
+      }
+    ]);
+
+    res.status(200).json(pipeline);
+
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to generate pipeline report"
+    });
+  }
+});
+
 app.post("/tags", async (req, res) => {
   try {
     const { name } = req.body;
