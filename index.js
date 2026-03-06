@@ -104,7 +104,7 @@ app.get("/leads", async (req, res) => {
   } catch (error) {
     console.error("GET /leads error:", error);
     res.status(500).json({
-      error: "Failed to fetch leads",
+      error: error.message,
     });
   }
 });
