@@ -21,8 +21,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors(corsOptions));
 app.use(express.json());
 
-initializeDatabase();
-
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
@@ -152,6 +150,7 @@ app.get("/report/last-week", async (req, res) => {
       .populate("salesAgent", "name email")
       .sort({ createdAt: -1 })
       .lean();
+
     res.status(200).json(leads);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -160,24 +159,22 @@ app.get("/report/last-week", async (req, res) => {
 
 app.get("/report/pipeline", async (req, res) => {
   try {
-
     const pipeline = await Lead.aggregate([
       {
         $group: {
           _id: "$status",
-          totalLeads: { $sum: 1 }
-        }
+          totalLeads: { $sum: 1 },
+        },
       },
       {
-        $sort: { totalLeads: -1 }
-      }
+        $sort: { totalLeads: -1 },
+      },
     ]);
 
     res.status(200).json(pipeline);
-
   } catch (error) {
     res.status(500).json({
-      error: "Failed to generate pipeline report"
+      error: "Failed to generate pipeline report",
     });
   }
 });
@@ -186,14 +183,19 @@ app.post("/tags", async (req, res) => {
   try {
     const { name } = req.body;
     const trimmedName = name?.trim();
+
     if (!trimmedName) {
       return res.status(400).json({ error: "Name is required" });
     }
+
     const existingTag = await Tag.findOne({ name: trimmedName });
+
     if (existingTag) {
-    return res.status(409).json({ error: "Tag already exists" });
+      return res.status(409).json({ error: "Tag already exists" });
     }
+
     const tag = await Tag.create({ name: trimmedName });
+
     res.status(201).json(tag);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -213,7 +215,7 @@ app.post("/leads/:id/comments", async (req, res) => {
   try {
     const comment = await Comment.create({
       ...req.body,
-      lead: req.params.id
+      lead: req.params.id,
     });
 
     res.status(201).json(comment);
@@ -225,15 +227,20 @@ app.post("/leads/:id/comments", async (req, res) => {
 app.post("/agents", async (req, res) => {
   try {
     const { name, email } = req.body;
-    if(!name || !email) {
+
+    if (!name || !email) {
       return res.status(400).json({ error: "Name and email are required" });
     }
-    const existingAgent = await SalesAgent.findOne({ email: email.toLowerCase(), });
-    if(existingAgent) {
+
+    const existingAgent = await SalesAgent.findOne({
+      email: email.toLowerCase(),
+    });
+
+    if (existingAgent) {
       return res.status(400).json({ error: "Email already exists" });
     }
 
-     const agent = await SalesAgent.create({
+    const agent = await SalesAgent.create({
       name: name.trim(),
       email: email.toLowerCase(),
     });
@@ -246,7 +253,10 @@ app.post("/agents", async (req, res) => {
 
 app.put("/leads/:id", async (req, res) => {
   try {
-    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+
     res.status(200).json(lead);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -255,7 +265,10 @@ app.put("/leads/:id", async (req, res) => {
 
 app.patch("/leads/:id", async (req, res) => {
   try {
-    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+
     res.status(200).json(lead);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -265,12 +278,27 @@ app.patch("/leads/:id", async (req, res) => {
 app.delete("/leads/:id", async (req, res) => {
   try {
     await Lead.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: "Lead deleted successfully" });
+
+    res.status(200).json({
+      message: "Lead deleted successfully",
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+async function startServer() {
+  try {
+    await initializeDatabase();
+
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+
+  } catch (error) {
+    console.error("Database connection failed:", error);
+  }
+}
+
+startServer();
