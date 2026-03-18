@@ -12,14 +12,82 @@ const Tag = require("./models/Tag");
 const app = express();
 
 const corsOptions = {
-  origin: "*",
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
   credentials: true,
 };
 
 const PORT = process.env.PORT || 3000;
 
+const ALLOWED_STATUS = [
+  "New",
+  "Contacted",
+  "Qualified",
+  "Proposal Sent",
+  "Closed",
+];
+
+const ALLOWED_SOURCES = ["Website", "Referral", "Cold Call"];
+const ALLOWED_PRIORITIES = ["High", "Medium", "Low"];
+
 app.use(cors(corsOptions));
 app.use(express.json());
+
+function validateObjectId(id, label = "ID") {
+  return mongoose.Types.ObjectId.isValid(id)
+    ? null
+    : `${label} is invalid`;
+}
+
+function validateLeadPayload(body, isPartial = false) {
+  const errors = [];
+  const { name, source, salesAgent, status, tags, timeToClose, priority } = body;
+
+  if (!isPartial || name !== undefined) {
+    if (!name || !String(name).trim()) {
+      errors.push("Lead name is required");
+    }
+  }
+
+  if (!isPartial || source !== undefined) {
+    if (!ALLOWED_SOURCES.includes(source)) {
+      errors.push(`Source must be one of: ${ALLOWED_SOURCES.join(", ")}`);
+    }
+  }
+
+  if (!isPartial || salesAgent !== undefined) {
+    if (!salesAgent || !mongoose.Types.ObjectId.isValid(salesAgent)) {
+      errors.push("Valid salesAgent ID is required");
+    }
+  }
+
+  if (!isPartial || status !== undefined) {
+    if (!ALLOWED_STATUS.includes(status)) {
+      errors.push(`Status must be one of: ${ALLOWED_STATUS.join(", ")}`);
+    }
+  }
+
+  if (!isPartial || priority !== undefined) {
+    if (!ALLOWED_PRIORITIES.includes(priority)) {
+      errors.push(`Priority must be one of: ${ALLOWED_PRIORITIES.join(", ")}`);
+    }
+  }
+
+  if (!isPartial || timeToClose !== undefined) {
+    if (
+      timeToClose === "" ||
+      Number.isNaN(Number(timeToClose)) ||
+      Number(timeToClose) < 0
+    ) {
+      errors.push("timeToClose must be a valid non-negative number");
+    }
+  }
+
+  if (tags !== undefined && !Array.isArray(tags)) {
+    errors.push("tags must be an array");
+  }
+
+  return errors;
+}
 
 app.get("/", (req, res) => {
   res.send("API is running...");
@@ -27,8 +95,64 @@ app.get("/", (req, res) => {
 
 app.get("/agents", async (req, res) => {
   try {
-    const agents = await SalesAgent.find();
+    const agents = await SalesAgent.find().sort({ createdAt: -1 }).lean();
     res.status(200).json(agents);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/agents", async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ error: "Name and email are required" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingAgent = await SalesAgent.findOne({ email: normalizedEmail });
+    if (existingAgent) {
+      return res.status(409).json({ error: "Email already exists" });
+    }
+
+    const agent = await SalesAgent.create({
+      name: name.trim(),
+      email: normalizedEmail,
+    });
+
+    res.status(201).json(agent);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/tags", async (req, res) => {
+  try {
+    const tags = await Tag.find().sort({ name: 1 }).lean();
+    res.status(200).json(tags);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/tags", async (req, res) => {
+  try {
+    const { name } = req.body;
+    const trimmedName = name?.trim();
+
+    if (!trimmedName) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const existingTag = await Tag.findOne({ name: trimmedName });
+    if (existingTag) {
+      return res.status(409).json({ error: "Tag already exists" });
+    }
+
+    const tag = await Tag.create({ name: trimmedName });
+    res.status(201).json(tag);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -37,25 +161,15 @@ app.get("/agents", async (req, res) => {
 app.get("/leads", async (req, res) => {
   try {
     const { salesAgent, status, tags, source, page = 1, limit = 10 } = req.query;
-
     const filter = {};
 
     if (salesAgent) {
-      if (!mongoose.Types.ObjectId.isValid(salesAgent)) {
-        return res.status(400).json({
-          error: "Invalid salesAgent ID",
-        });
+      const idError = validateObjectId(salesAgent, "salesAgent ID");
+      if (idError) {
+        return res.status(400).json({ error: idError });
       }
       filter.salesAgent = salesAgent;
     }
-
-    const ALLOWED_STATUS = [
-      "New",
-      "Contacted",
-      "Qualified",
-      "Proposal Sent",
-      "Closed",
-    ];
 
     if (status) {
       if (!ALLOWED_STATUS.includes(status)) {
@@ -67,19 +181,27 @@ app.get("/leads", async (req, res) => {
     }
 
     if (source) {
+      if (!ALLOWED_SOURCES.includes(source.trim())) {
+        return res.status(400).json({
+          error: `Invalid source. Allowed: ${ALLOWED_SOURCES.join(", ")}`,
+        });
+      }
       filter.source = source.trim();
     }
 
     if (tags) {
       const tagsArray = Array.isArray(tags)
         ? tags
-        : tags.split(",").map((tag) => tag.trim());
+        : String(tags)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean);
 
       filter.tags = { $in: tagsArray };
     }
 
-    const pageNumber = Math.max(Number(page), 1);
-    const pageLimit = Math.min(Number(limit), 50);
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
     const skip = (pageNumber - 1) * pageLimit;
 
     const [leads, total] = await Promise.all([
@@ -101,18 +223,17 @@ app.get("/leads", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /leads error:", error);
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
 app.get("/leads/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const idError = validateObjectId(id, "Lead ID");
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid lead ID" });
+    if (idError) {
+      return res.status(400).json({ error: idError });
     }
 
     const lead = await Lead.findById(id)
@@ -130,12 +251,114 @@ app.get("/leads/:id", async (req, res) => {
   }
 });
 
+app.post("/leads", async (req, res) => {
+  try {
+    const errors = validateLeadPayload(req.body);
+
+    if (errors.length) {
+      return res.status(400).json({ errors });
+    }
+
+    const agentExists = await SalesAgent.exists({ _id: req.body.salesAgent });
+    if (!agentExists) {
+      return res.status(404).json({ error: "Sales agent not found" });
+    }
+
+    const lead = await Lead.create({
+      ...req.body,
+      name: req.body.name.trim(),
+      source: req.body.source.trim(),
+      timeToClose: Number(req.body.timeToClose),
+      tags: req.body.tags || [],
+    });
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate("salesAgent", "name email")
+      .lean();
+
+    res.status(201).json(populatedLead);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/leads/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const idError = validateObjectId(id, "Lead ID");
+
+    if (idError) {
+      return res.status(400).json({ error: idError });
+    }
+
+    const errors = validateLeadPayload(req.body, true);
+    if (errors.length) {
+      return res.status(400).json({ errors });
+    }
+
+    if (req.body.salesAgent) {
+      const agentExists = await SalesAgent.exists({ _id: req.body.salesAgent });
+      if (!agentExists) {
+        return res.status(404).json({ error: "Sales agent not found" });
+      }
+    }
+
+    const updatePayload = { ...req.body };
+
+    if (updatePayload.name !== undefined) {
+      updatePayload.name = updatePayload.name.trim();
+    }
+
+    if (updatePayload.source !== undefined) {
+      updatePayload.source = updatePayload.source.trim();
+    }
+
+    if (updatePayload.timeToClose !== undefined) {
+      updatePayload.timeToClose = Number(updatePayload.timeToClose);
+    }
+
+    const lead = await Lead.findByIdAndUpdate(id, updatePayload, {
+      new: true,
+      runValidators: true,
+    }).populate("salesAgent", "name email");
+
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    res.status(200).json(lead);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/leads/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const idError = validateObjectId(id, "Lead ID");
+
+    if (idError) {
+      return res.status(400).json({ error: idError });
+    }
+
+    const deletedLead = await Lead.findByIdAndDelete(id);
+    if (!deletedLead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    res.status(200).json({ message: "Lead deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/leads/:id/comments", async (req, res) => {
   try {
     const { id } = req.params;
+    const idError = validateObjectId(id, "Lead ID");
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid lead ID" });
+    if (idError) {
+      return res.status(400).json({ error: idError });
     }
 
     const leadExists = await Lead.exists({ _id: id });
@@ -155,10 +378,45 @@ app.get("/leads/:id/comments", async (req, res) => {
   }
 });
 
-app.get("/tags", async (req, res) => {
+app.post("/leads/:id/comments", async (req, res) => {
   try {
-    const tags = await Tag.find().sort({ name: 1 }).lean();
-    res.status(200).json(tags);
+    const { id } = req.params;
+    const { commentText, author } = req.body;
+
+    const idError = validateObjectId(id, "Lead ID");
+    if (idError) {
+      return res.status(400).json({ error: idError });
+    }
+
+    if (!commentText || !String(commentText).trim()) {
+      return res.status(400).json({ error: "commentText is required" });
+    }
+
+    const leadExists = await Lead.exists({ _id: id });
+    if (!leadExists) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    const commentPayload = {
+      lead: id,
+      commentText: String(commentText).trim(),
+    };
+
+    if (author !== undefined) {
+      const authorError = validateObjectId(author, "Author ID");
+      if (authorError) {
+        return res.status(400).json({ error: authorError });
+      }
+      commentPayload.author = author;
+    }
+
+    const comment = await Comment.create(commentPayload);
+
+    const populatedComment = await Comment.findById(comment._id)
+      .populate("author", "name email")
+      .lean();
+
+    res.status(201).json(populatedComment);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -169,9 +427,12 @@ app.get("/report/last-week", async (req, res) => {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const leads = await Lead.find({ createdAt: { $gte: oneWeekAgo } })
+    const leads = await Lead.find({
+      status: "Closed",
+      updatedAt: { $gte: oneWeekAgo },
+    })
       .populate("salesAgent", "name email")
-      .sort({ createdAt: -1 })
+      .sort({ updatedAt: -1 })
       .lean();
 
     res.status(200).json(leads);
@@ -202,114 +463,56 @@ app.get("/report/pipeline", async (req, res) => {
   }
 });
 
-app.post("/tags", async (req, res) => {
+app.get("/report/closed-by-agent", async (req, res) => {
   try {
-    const { name } = req.body;
-    const trimmedName = name?.trim();
+    const report = await Lead.aggregate([
+      {
+        $match: { status: "Closed" },
+      },
+      {
+        $group: {
+          _id: "$salesAgent",
+          totalClosed: { $sum: 1 },
+        },
+      },
+      {
+        $lookup: {
+          from: "salesagents",
+          localField: "_id",
+          foreignField: "_id",
+          as: "agent",
+        },
+      },
+      {
+        $unwind: {
+          path: "$agent",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          salesAgentId: "$_id",
+          agentName: { $ifNull: ["$agent.name", "Unassigned"] },
+          totalClosed: 1,
+        },
+      },
+      {
+        $sort: { totalClosed: -1 },
+      },
+    ]);
 
-    if (!trimmedName) {
-      return res.status(400).json({ error: "Name is required" });
-    }
-
-    const existingTag = await Tag.findOne({ name: trimmedName });
-
-    if (existingTag) {
-      return res.status(409).json({ error: "Tag already exists" });
-    }
-
-    const tag = await Tag.create({ name: trimmedName });
-
-    res.status(201).json(tag);
+    res.status(200).json(report);
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/leads", async (req, res) => {
-  try {
-    const lead = await Lead.create(req.body);
-    res.status(201).json(lead);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/leads/:id/comments", async (req, res) => {
-  try {
-    const comment = await Comment.create({
-      ...req.body,
-      lead: req.params.id,
+    res.status(500).json({
+      error: "Failed to generate closed-by-agent report",
     });
-
-    res.status(201).json(comment);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/agents", async (req, res) => {
-  try {
-    const { name, email } = req.body;
-
-    if (!name || !email) {
-      return res.status(400).json({ error: "Name and email are required" });
-    }
-
-    const existingAgent = await SalesAgent.findOne({
-      email: email.toLowerCase(),
-    });
-
-    if (existingAgent) {
-      return res.status(400).json({ error: "Email already exists" });
-    }
-
-    const agent = await SalesAgent.create({
-      name: name.trim(),
-      email: email.toLowerCase(),
-    });
-
-    res.status(201).json(agent);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
-
-app.put("/leads/:id", async (req, res) => {
-  try {
-    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-
-    res.status(200).json(lead);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/leads/:id", async (req, res) => {
-  try {
-    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-
-    res.status(200).json(lead);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete("/leads/:id", async (req, res) => {
-  try {
-    await Lead.findByIdAndDelete(req.params.id);
-
-    res.status(200).json({
-      message: "Lead deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 async function startServer() {
   try {
@@ -318,7 +521,6 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
-
   } catch (error) {
     console.error("Database connection failed:", error);
   }
