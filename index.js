@@ -117,6 +117,27 @@ app.post("/register", async(req, res) => {
   }
 });
 
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password are required" });
+  }
+  try {
+    const user = await User.findOne({ username: username.toLowerCase() }).select("+password");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "4h" });
+    res.status(200).json({ message: "Login successful", token, username: user.username });
+  } catch (error) {
+    res.status(500).json({ message: "Error logging in", error: error.message });
+  }
+});
+
 app.get("/agents", async (req, res) => {
   try {
     const agents = await SalesAgent.find().sort({ createdAt: -1 }).lean();
