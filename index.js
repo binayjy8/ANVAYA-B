@@ -559,16 +559,15 @@ app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-async function startServer() {
-  try {
-    await initializeDatabase();
+initializeDatabase().catch((err) => {
+  console.error("Database connection failed:", err);
+});
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("Database connection failed:", error);
-  }
+if (require.main === module) {
+  // Only listen when run directly (local dev via `node index.js` / nodemon)
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 }
 
-startServer();
+module.exports = app;
