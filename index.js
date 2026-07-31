@@ -92,9 +92,9 @@ function validateLeadPayload(body, isPartial = false) {
   return errors;
 }
 
-app.get("/", (req, res) => {
-  res.send("API is running...");
-});
+// app.get("/", (req, res) => {
+//   res.send("API is running...");
+// });
 
 app.post("/register", async(req, res) => {
   const {username, password} = req.body;
