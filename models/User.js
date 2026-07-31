@@ -1,20 +1,32 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 
-const UserSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema(
+  {
     username: {
-        type: String,
-        required: true,
-        unique: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+      index: true,
     },
     password: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
+      select: false, 
     },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
+  },
+  {
+    timestamps: true, 
+    versionKey: false,
+  }
+);
+
+UserSchema.set("toJSON", {
+  transform: (doc, ret) => {
+    delete ret.password;
+    return ret;
+  },
 });
 
 const User = mongoose.model("User", UserSchema);
