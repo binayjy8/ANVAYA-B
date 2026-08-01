@@ -35,6 +35,16 @@ const ALLOWED_PRIORITIES = ["High", "Medium", "Low"];
 app.use(cors(corsOptions));
 app.use(express.json());
 
+
+app.use(async (req, res, next) => {
+  try {
+    await initializeDatabase();
+    next();
+  } catch (error) {
+    res.status(503).json({ error: "Database unavailable, please try again" });
+  }
+});
+
 function validateObjectId(id, label = "ID") {
   return mongoose.Types.ObjectId.isValid(id)
     ? null
@@ -92,9 +102,9 @@ function validateLeadPayload(body, isPartial = false) {
   return errors;
 }
 
-// app.get("/", (req, res) => {
-//   res.send("API is running...");
-// });
+app.get("/", (req, res) => {
+  res.send("API is running...");
+});
 
 app.post("/register", async(req, res) => {
   const {username, password} = req.body;
@@ -559,12 +569,7 @@ app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-initializeDatabase().catch((err) => {
-  console.error("Database connection failed:", err);
-});
-
 if (require.main === module) {
-  // Only listen when run directly (local dev via `node index.js` / nodemon)
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
